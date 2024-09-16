@@ -1,10 +1,11 @@
 from flask import Flask
 
-from app.routes import docs
+from app.routes import docs, info
 
 def create_app():
     app = Flask(__name__)
 
     app.register_blueprint(docs)
+    app.register_blueprint(info)
 
     return app
