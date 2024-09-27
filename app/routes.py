@@ -2,15 +2,15 @@ import os
 import time
 import subprocess
 
-from flask import Response, Blueprint, render_template, jsonify, abort, request, current_app
+from flask import Response, Blueprint, render_template, jsonify, abort, request, current_app, send_file
 
 from .services.gcc_compiler import compile_code
 
-docs = Blueprint('main', __name__)
 info = Blueprint('info', __name__)
 process_code = Blueprint('process', __name__)
+files = Blueprint('files', __name__)
 
-@docs.route('/')
+@info.route('/')
 def home():
     return render_template('index.html')
 
@@ -87,3 +87,18 @@ def compile_run():
                 os.remove(current_app.config['EXECUTABLE'])
 
     return jsonify(response)
+
+@files.route('/download', methods=['POST'])
+def download_file():
+    source_code = request.json.get('sourceCode')
+
+    file_name = current_app.config['SOURCE_FILE']
+    file_path = os.path.join(os.getcwd(), file_name)
+    try:
+        with open(file_path, 'w') as file:
+            file.write(source_code)
+            
+        return send_file(file_path, as_attachment=True, download_name=file_name)
+    finally:
+        if os.path.exists(file_name):
+            os.remove(file_name)
