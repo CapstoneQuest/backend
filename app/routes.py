@@ -3,6 +3,7 @@ import time
 import subprocess
 
 from flask import Response, Blueprint, render_template, jsonify, abort, request, current_app, send_file
+from werkzeug.utils import secure_filename
 
 from .services.gcc_compiler import compile_code
 
@@ -102,3 +103,24 @@ def download_file():
     finally:
         if os.path.exists(file_name):
             os.remove(file_name)
+
+@files.route('/upload', methods=['POST'])
+def upload_file():
+    response = {'error': None, 'filename': None, 'source_code': None}
+
+    if 'file' not in request.files:
+        response.update({'error': 'No file part'})
+        return jsonify(response)
+    
+    file = request.files['file']
+
+    if file.filename.lower().endswith(tuple(current_app.config['VALID_FILE_EXTENSIONS'])):
+        source_code = file.read().decode('utf-8')
+            
+        response.update({'filename': file.filename,
+                         'source_code': source_code})
+    else:
+        response.update({'error': 'No file selected or file type not allowed',
+                         'filename': file.filename})
+    
+    return jsonify(response)

@@ -13,4 +13,7 @@ class Config:
     COMPILATION_ERROR = 1
     RUNTIME_ERROR = 2
     TIME_LIMIT_EXCEEDED = 3
+
+    MAX_CONTENT_LENGTH = 5 * 1024 * 1024  # 5 MB limit
+    VALID_FILE_EXTENSIONS = ['.cpp', '.txt']
     
