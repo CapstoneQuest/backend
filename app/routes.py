@@ -124,3 +124,19 @@ def upload_file():
                          'filename': file.filename})
     
     return jsonify(response)
+
+@files.route('/snippets/<name>', methods=['GET'])
+def load_snippet(name):
+    file_name = current_app.config['SNIPPET_FILES'].get(name)
+
+    response = {'file': None, 'source_code': None}
+
+    if file_name:
+        file_path = os.path.join(current_app.config['SNIPPET_FILES_DIR'], file_name)
+
+        with open(file_path, 'r') as file:
+            source_code = file.read()
+            response.update({'file': file_name,
+                             'source_code': source_code})
+
+    return jsonify(response)

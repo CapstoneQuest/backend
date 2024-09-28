@@ -16,4 +16,8 @@ class Config:
 
     MAX_CONTENT_LENGTH = 5 * 1024 * 1024  # 5 MB limit
     VALID_FILE_EXTENSIONS = ['.cpp', '.txt']
+
+    SNIPPET_FILES_DIR = 'app/cpp_snippets/'
+    SNIPPET_FILES = {
+    }
     
