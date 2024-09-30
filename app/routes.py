@@ -3,9 +3,10 @@ import time
 import subprocess
 
 from flask import Response, Blueprint, render_template, jsonify, abort, request, current_app, send_file
-from werkzeug.utils import secure_filename
+from pygdbmi.gdbcontroller import GdbController
 
 from .services.gcc_compiler import compile_code
+from .services.gdbmi import get_trace_step
 
 info = Blueprint('info', __name__)
 process_code = Blueprint('process', __name__)
@@ -86,6 +87,47 @@ def compile_run():
         finally:
             if os.path.exists(current_app.config['EXECUTABLE']):
                 os.remove(current_app.config['EXECUTABLE'])
+
+    return jsonify(response)
+
+@process_code.route('/generate-trace', methods=['POST'])
+def generate_gdb_trace():
+    source_code = request.json.get('sourceCode')
+
+    trace_steps = []
+    response = {'status': None, 'exit_code': None, 'stderr': None, 'code': source_code, 'trace': trace_steps}
+
+    compilation_result = compile_code(source_code, 
+                                      current_app.config['SOURCE_FILE'], 
+                                      current_app.config['EXECUTABLE'],
+                                      current_app.config['CXX'],
+                                      current_app.config['DIALECT'])
+    
+    # If compilation fails
+    if compilation_result.returncode != 0:
+        response.update({'status': current_app.config['COMPILATION_ERROR'],
+                         'exit_code': compilation_result.returncode,
+                         'stderr': compilation_result.stderr})
+    # Generate execution trace
+    else:
+        response.update({'status': current_app.config['SUCCESS'],
+                         'exit_code': compilation_result.returncode})
+        controller = GdbController()
+        controller.write(f"-file-exec-and-symbols {current_app.config['EXECUTABLE']}")
+        controller.write(f'-break-insert main')
+
+        step = get_trace_step(gdb_controller=controller, gdb_command='-exec-run')
+        trace_steps.append(step)
+
+        while True:
+            step = get_trace_step(gdb_controller=controller, gdb_command='-exec-step')
+            if step == 'main_returned':
+                break
+            trace_steps.append(step)
+
+        controller.exit()
+        if os.path.exists(current_app.config['EXECUTABLE']):
+            os.remove(current_app.config['EXECUTABLE'])
 
     return jsonify(response)
 
