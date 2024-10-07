@@ -53,11 +53,16 @@ def get_primitive_variable(gdb_controller, primitive_variable):
     results = gdb_controller.write(f'-data-evaluate-expression &{var_name}')
     var_address = results[0]['payload']['value']
 
-    return {'address': var_address.split(' ')[0], 'name': var_name, 'data_type': var_dtype, 'value': var_value}
+    return {'address': var_address.split(' ')[0], 
+            'name': var_name, 
+            'data_type': var_dtype, 
+            'value': chr(int(var_value)) if var_dtype == 'char' else var_value}
 
 def update_heap(gdb_controller, heap, var):
     var_name = var['name']
-    var_dtype = var['type']
+    var_dtype = var['type'].split(' ')[0]
     var_value = var['value'].split(' ')[0]
     results = gdb_controller.write(f'-data-evaluate-expression *({var_name})')
-    heap.update({var_value: [var_dtype.split(' ')[0], results[0]['payload']['value']]})
+    value = results[0]['payload']['value']
+    heap.update({var_value: [var_dtype, 
+                             chr(int(value.split(' ')[0])) if var_dtype == 'char' else var_value]})
