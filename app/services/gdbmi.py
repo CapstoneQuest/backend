@@ -1,3 +1,7 @@
+import re
+
+POINTER_REGEX = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*\s*\*+$')
+
 def get_trace_step(gdb_controller, gdb_command):
     step = {'function': '', 'line': -1, 'stack_frames': [], 'heap': {}, 'stdout': ''}
 
@@ -34,6 +38,9 @@ def update_program_state(gdb_controller, stack_frames, heap):
         for var in local_vars:
             primitive_var = get_primitive_variable(gdb_controller=gdb_controller, primitive_variable=var)
 
+            if POINTER_REGEX.match(var['type']):
+                update_heap(gdb_controller=gdb_controller, heap=heap, var=var)
+
             local_variables.append(primitive_var)
         
         stack_frame.update({'local_variables': local_variables})
@@ -46,4 +53,11 @@ def get_primitive_variable(gdb_controller, primitive_variable):
     results = gdb_controller.write(f'-data-evaluate-expression &{var_name}')
     var_address = results[0]['payload']['value']
 
-    return {'address': var_address, 'name': var_name, 'data_type': var_dtype, 'value': var_value}
+    return {'address': var_address.split(' ')[0], 'name': var_name, 'data_type': var_dtype, 'value': var_value}
+
+def update_heap(gdb_controller, heap, var):
+    var_name = var['name']
+    var_dtype = var['type']
+    var_value = var['value'].split(' ')[0]
+    results = gdb_controller.write(f'-data-evaluate-expression *({var_name})')
+    heap.update({var_value: [var_dtype.split(' ')[0], results[0]['payload']['value']]})
