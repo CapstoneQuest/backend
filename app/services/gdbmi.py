@@ -1,6 +1,7 @@
 import re
 
 POINTER_REGEX = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*\s*\*+$')
+ARRAY_REGEX = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]* \[(\d+)\]$')
 
 def get_trace_step(gdb_controller, gdb_command):
     step = {'function': '', 'line': -1, 'stack_frames': [], 'heap': {}, 'stdout': ''}
@@ -36,12 +37,14 @@ def update_program_state(gdb_controller, stack_frames, heap):
         local_variables = []
         local_vars = results[0]['payload']['variables']
         for var in local_vars:
-            primitive_var = get_primitive_variable(gdb_controller=gdb_controller, primitive_variable=var)
-
             if POINTER_REGEX.match(var['type']):
                 update_heap(gdb_controller=gdb_controller, heap=heap, var=var)
-
-            local_variables.append(primitive_var)
+            elif ARRAY_REGEX.match(var['type']):
+                array_var = get_array_type(gdb_controller=gdb_controller, array_variable=var)
+                local_variables.append(array_var)
+            else:
+                primitive_var = get_primitive_variable(gdb_controller=gdb_controller, primitive_variable=var)
+                local_variables.append(primitive_var)
         
         stack_frame.update({'local_variables': local_variables})
         stack_frames.append(stack_frame)
@@ -50,6 +53,25 @@ def get_primitive_variable(gdb_controller, primitive_variable):
     var_name = primitive_variable['name']
     var_dtype = primitive_variable['type']
     var_value = primitive_variable['value'].split(' ')[0]
+    results = gdb_controller.write(f'-data-evaluate-expression &{var_name}')
+    var_address = results[0]['payload']['value']
+
+    return {'address': var_address.split(' ')[0], 
+            'name': var_name, 
+            'data_type': var_dtype, 
+            'value': chr(int(var_value)) if var_dtype == 'char' else var_value}
+
+def get_array_type(gdb_controller, array_variable):
+    var_name = array_variable['name']
+    var_dtype = array_variable['type']
+    results = gdb_controller.write(f'-var-create {var_name} * {var_name}')
+    if results[0]['message'] == 'error':
+        gdb_controller.write(f'-var-update {var_name}')
+
+    results = gdb_controller.write(f'-var-list-children --simple-values {var_name}')
+    child_items = results[0]['payload']['children']
+    var_value = [item['value'] for item in child_items]
+    
     results = gdb_controller.write(f'-data-evaluate-expression &{var_name}')
     var_address = results[0]['payload']['value']
 
