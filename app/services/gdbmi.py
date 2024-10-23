@@ -52,24 +52,31 @@ def update_program_state(gdb_controller, stack_frames, heap):
             # elif ARRAY_REGEX.match(var['type']):
             #     array_var = get_array_type(gdb_controller=gdb_controller, array_variable=var)
             #     local_variables.append(array_var)
-            # else:
-            #     primitive_var = get_primitive_type(gdb_controller=gdb_controller, primitive_variable=var)
-            #     local_variables.append(primitive_var)
+            else:
+                primitive_var = get_primitive_type(gdb_controller=gdb_controller, primitive_varobj=var)
+                local_variables.append(primitive_var)
         
         stack_frame.update({'local_variables': local_variables})
         stack_frames.append(stack_frame)
 
-# def get_primitive_type(gdb_controller, primitive_varobj):
-#     var_name = primitive_variable['name']
-#     var_dtype = primitive_variable['type']
-#     var_value = primitive_variable['value'].split(' ')[0]
-#     results = gdb_controller.write(f'-data-evaluate-expression &{var_name}')
-#     var_address = results[0]['payload']['value']
+def get_primitive_type(gdb_controller, primitive_varobj):
+    var_name = primitive_varobj['name']
+    var_dtype = primitive_varobj['type']
+    results = gdb_controller.write(f'-data-evaluate-expression &{var_name}')
+    var_address = results[0]['payload']['value']
 
-#     return {'address': var_address.split(' ')[0], 
-#             'name': var_name, 
-#             'data_type': var_dtype, 
-#             'value': chr(int(var_value)) if var_dtype == 'char' else var_value}
+    gdb_controller.write(f'-var-update --all-values {var_name}')
+
+    var_value = []
+    populate_varobj_children(gdb_controller=gdb_controller, var_obj_name=var_name, children=var_value)
+
+    if len(var_value) == 0:
+        var_value = primitive_varobj['value'].split(' ')[0]
+
+    return {'address': var_address.split(' ')[0], 
+            'name': var_name, 
+            'data_type': var_dtype, 
+            'value': chr(int(var_value)) if var_dtype == 'char' else var_value}
 
 # def get_array_type(gdb_controller, array_varobj):
 #     var_name = array_variable['name']
