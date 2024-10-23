@@ -1,7 +1,11 @@
 import re
+from flask import g
 
 POINTER_REGEX = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*\s*\*+$')
 ARRAY_REGEX = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]* \[(\d+)\]$')
+
+POINTER_DATA_REGEX = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*\.\*[a-zA-Z_][a-zA-Z0-9_]*$')
+CLASS_MEMBERS_REGEX = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)?\.(public|private|protected)\.[a-zA-Z_][a-zA-Z0-9_]*$')
 
 def get_trace_step(gdb_controller, gdb_command):
     step = {'function': '', 'line': -1, 'stack_frames': [], 'heap': {}, 'stdout': ''}
@@ -36,55 +40,100 @@ def update_program_state(gdb_controller, stack_frames, heap):
 
         local_variables = []
         local_vars = results[0]['payload']['variables']
+
         for var in local_vars:
+            if not g.variables_dict.get(var['name']):
+                result = gdb_controller.write(f"-var-create {var['name']} * {var['name']}")
+                g.variables_dict.update({var['name']: result[0]['payload']})
+
             if POINTER_REGEX.match(var['type']):
-                update_heap(gdb_controller=gdb_controller, heap=heap, var=var)
-            elif ARRAY_REGEX.match(var['type']):
-                array_var = get_array_type(gdb_controller=gdb_controller, array_variable=var)
-                local_variables.append(array_var)
-            else:
-                primitive_var = get_primitive_variable(gdb_controller=gdb_controller, primitive_variable=var)
-                local_variables.append(primitive_var)
+                pointer_type = get_pointer_type(gdb_controller=gdb_controller, pointer_varobj=g.variables_dict.get(var['name']), heap=heap)
+                local_variables.append(pointer_type)
+            # elif ARRAY_REGEX.match(var['type']):
+            #     array_var = get_array_type(gdb_controller=gdb_controller, array_variable=var)
+            #     local_variables.append(array_var)
+            # else:
+            #     primitive_var = get_primitive_type(gdb_controller=gdb_controller, primitive_variable=var)
+            #     local_variables.append(primitive_var)
         
         stack_frame.update({'local_variables': local_variables})
         stack_frames.append(stack_frame)
 
-def get_primitive_variable(gdb_controller, primitive_variable):
-    var_name = primitive_variable['name']
-    var_dtype = primitive_variable['type']
-    var_value = primitive_variable['value'].split(' ')[0]
-    results = gdb_controller.write(f'-data-evaluate-expression &{var_name}')
-    var_address = results[0]['payload']['value']
+# def get_primitive_type(gdb_controller, primitive_varobj):
+#     var_name = primitive_variable['name']
+#     var_dtype = primitive_variable['type']
+#     var_value = primitive_variable['value'].split(' ')[0]
+#     results = gdb_controller.write(f'-data-evaluate-expression &{var_name}')
+#     var_address = results[0]['payload']['value']
 
-    return {'address': var_address.split(' ')[0], 
-            'name': var_name, 
-            'data_type': var_dtype, 
-            'value': chr(int(var_value)) if var_dtype == 'char' else var_value}
+#     return {'address': var_address.split(' ')[0], 
+#             'name': var_name, 
+#             'data_type': var_dtype, 
+#             'value': chr(int(var_value)) if var_dtype == 'char' else var_value}
 
-def get_array_type(gdb_controller, array_variable):
-    var_name = array_variable['name']
-    var_dtype = array_variable['type']
-    results = gdb_controller.write(f'-var-create {var_name} * {var_name}')
-    if results[0]['message'] == 'error':
-        gdb_controller.write(f'-var-update {var_name}')
+# def get_array_type(gdb_controller, array_varobj):
+#     var_name = array_variable['name']
+#     var_dtype = array_variable['type']
+#     results = gdb_controller.write(f'-var-create {var_name} * {var_name}')
+#     if results[0]['message'] == 'error':
+#         gdb_controller.write(f'-var-update {var_name}')
 
-    results = gdb_controller.write(f'-var-list-children --simple-values {var_name}')
-    child_items = results[0]['payload']['children']
-    var_value = [item['value'] for item in child_items]
+#     results = gdb_controller.write(f'-var-list-children --simple-values {var_name}')
+#     child_items = results[0]['payload']['children']
+#     var_value = [item['value'] for item in child_items]
     
+#     results = gdb_controller.write(f'-data-evaluate-expression &{var_name}')
+#     var_address = results[0]['payload']['value']
+
+#     return {'address': var_address.split(' ')[0], 
+#             'name': var_name, 
+#             'data_type': var_dtype, 
+#             'value': chr(int(var_value)) if var_dtype == 'char' else var_value}
+
+def get_pointer_type(gdb_controller, pointer_varobj, heap):
+    var_name = pointer_varobj['name']  
+    var_dtype = pointer_varobj['type']
     results = gdb_controller.write(f'-data-evaluate-expression &{var_name}')
     var_address = results[0]['payload']['value']
+
+    gdb_controller.write(f'-var-update --all-values {var_name}')
+
+    result = gdb_controller.write(f'-var-evaluate-expression {var_name}')
+    var_value = result[0]['payload']['value'].split(' ')[0]
+
+    heap_dtype = pointer_varobj['type'].split(' ')[0]
+    heap_value = []
+    populate_varobj_children(gdb_controller=gdb_controller, var_obj_name=var_name, children=heap_value)
+
+    heap.update({var_value: [heap_dtype, 
+                            chr(int(heap_value.split(' ')[0])) if heap_dtype == 'char' else heap_value]})
 
     return {'address': var_address.split(' ')[0], 
             'name': var_name, 
             'data_type': var_dtype, 
-            'value': chr(int(var_value)) if var_dtype == 'char' else var_value}
+            'value': var_value.split(' ')[0]}
 
-def update_heap(gdb_controller, heap, var):
-    var_name = var['name']
-    var_dtype = var['type'].split(' ')[0]
-    var_value = var['value'].split(' ')[0]
-    results = gdb_controller.write(f'-data-evaluate-expression *({var_name})')
-    value = results[0]['payload']['value']
-    heap.update({var_value: [var_dtype, 
-                             chr(int(value.split(' ')[0])) if var_dtype == 'char' else var_value]})
+def populate_varobj_children(gdb_controller, var_obj_name, children):
+    result = gdb_controller.write(f'-var-list-children --all-values {var_obj_name}')
+    print(result)
+    children_count = int(result[0]['payload']['numchild'])
+
+    if children_count == 0:
+        return
+    
+    child_list = result[0]['payload']['children']
+    for child in child_list:
+        if CLASS_MEMBERS_REGEX.match(child['name']):
+            if ARRAY_REGEX.match(child['type']):
+                results = gdb_controller.write(f"-var-list-children --simple-values {child['name']}")
+                child_items = results[0]['payload']['children']
+                values = [item['value'] for item in child_items]
+                children.append([child['name'], child['type'], child['exp'], values])
+                continue
+            children.append([child['name'], child['type'], child['exp'], child['value']])
+            populate_varobj_children(gdb_controller, child['name'], children)
+        elif POINTER_DATA_REGEX.match(child['name']):
+            children.extend([child['name'], child['exp'], child['value']])
+            continue
+        else:
+            populate_varobj_children(gdb_controller, child['name'], children)
