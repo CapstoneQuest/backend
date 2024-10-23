@@ -49,9 +49,9 @@ def update_program_state(gdb_controller, stack_frames, heap):
             if POINTER_REGEX.match(var['type']):
                 pointer_type = get_pointer_type(gdb_controller=gdb_controller, pointer_varobj=g.variables_dict.get(var['name']), heap=heap)
                 local_variables.append(pointer_type)
-            # elif ARRAY_REGEX.match(var['type']):
-            #     array_var = get_array_type(gdb_controller=gdb_controller, array_variable=var)
-            #     local_variables.append(array_var)
+            elif ARRAY_REGEX.match(var['type']):
+                array_var = get_array_type(gdb_controller=gdb_controller, array_varobj=var)
+                local_variables.append(array_var)
             else:
                 primitive_var = get_primitive_type(gdb_controller=gdb_controller, primitive_varobj=var)
                 local_variables.append(primitive_var)
@@ -78,24 +78,22 @@ def get_primitive_type(gdb_controller, primitive_varobj):
             'data_type': var_dtype, 
             'value': chr(int(var_value)) if var_dtype == 'char' else var_value}
 
-# def get_array_type(gdb_controller, array_varobj):
-#     var_name = array_variable['name']
-#     var_dtype = array_variable['type']
-#     results = gdb_controller.write(f'-var-create {var_name} * {var_name}')
-#     if results[0]['message'] == 'error':
-#         gdb_controller.write(f'-var-update {var_name}')
+def get_array_type(gdb_controller, array_varobj):
+    var_name = array_varobj['name']
+    var_dtype = array_varobj['type']
+    results = gdb_controller.write(f'-data-evaluate-expression &{var_name}')
+    var_address = results[0]['payload']['value']
 
-#     results = gdb_controller.write(f'-var-list-children --simple-values {var_name}')
-#     child_items = results[0]['payload']['children']
-#     var_value = [item['value'] for item in child_items]
-    
-#     results = gdb_controller.write(f'-data-evaluate-expression &{var_name}')
-#     var_address = results[0]['payload']['value']
+    gdb_controller.write(f'-var-update --all-values {var_name}')
 
-#     return {'address': var_address.split(' ')[0], 
-#             'name': var_name, 
-#             'data_type': var_dtype, 
-#             'value': chr(int(var_value)) if var_dtype == 'char' else var_value}
+    results = gdb_controller.write(f'-var-list-children --all-values {var_name}')
+    child_items = results[0]['payload']['children']
+    var_value = [item['value'] for item in child_items]
+
+    return {'address': var_address.split(' ')[0], 
+            'name': var_name, 
+            'data_type': var_dtype, 
+            'value': chr(int(var_value)) if var_dtype == 'char' else var_value}
 
 def get_pointer_type(gdb_controller, pointer_varobj, heap):
     var_name = pointer_varobj['name']  
