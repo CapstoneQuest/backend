@@ -71,12 +71,12 @@ def get_primitive_type(gdb_controller, primitive_varobj):
     populate_varobj_children(gdb_controller=gdb_controller, var_obj_name=var_name, children=var_value)
 
     if len(var_value) == 0:
-        var_value = primitive_varobj['value'].split(' ')[0]
+        var_value = primitive_varobj['value']
 
     return {'address': var_address.split(' ')[0], 
             'name': var_name, 
             'data_type': var_dtype, 
-            'value': chr(int(var_value)) if var_dtype == 'char' else var_value}
+            'value': var_value}
 
 def get_array_type(gdb_controller, array_varobj):
     var_name = array_varobj['name']
@@ -110,8 +110,7 @@ def get_pointer_type(gdb_controller, pointer_varobj, heap):
     heap_value = []
     populate_varobj_children(gdb_controller=gdb_controller, var_obj_name=var_name, children=heap_value)
 
-    heap.update({var_value: [heap_dtype, 
-                            chr(int(heap_value.split(' ')[0])) if heap_dtype == 'char' else heap_value]})
+    heap.update({var_value: [heap_dtype, heap_value]})
 
     return {'address': var_address.split(' ')[0], 
             'name': var_name, 
@@ -120,7 +119,6 @@ def get_pointer_type(gdb_controller, pointer_varobj, heap):
 
 def populate_varobj_children(gdb_controller, var_obj_name, children):
     result = gdb_controller.write(f'-var-list-children --all-values {var_obj_name}')
-    print(result)
     children_count = int(result[0]['payload']['numchild'])
 
     if children_count == 0:
